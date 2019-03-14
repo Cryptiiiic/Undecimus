@@ -14,6 +14,14 @@ branches:
   only:
   - develop
 
+deploy:
+  provider: releases
+  api_key: $TOKEN
+  file: "Undecimus.ipa"
+  skip_cleanup: true
+  on:
+    tags: true
+
 before_install:
   - ssh-keyscan github.com >> ~/.ssh/known_hosts
   - git submodule update --init
