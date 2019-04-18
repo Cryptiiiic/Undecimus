@@ -748,7 +748,7 @@ void jailbreak()
                 case mach_swap_exploit: {
                     machswap_offsets_t *machswap_offsets = NULL;
                     if ((machswap_offsets = get_machswap_offsets()) != NULL &&
-                        machswap_exploit(machswap_offsets, &tfp0, &kernel_base) == ERR_SUCCESS &&
+                        machswap_exploit(machswap_offsets) == ERR_SUCCESS &&
                         MACH_PORT_VALID(tfp0) &&
                         ISADDR(kernel_base)) {
                         exploit_success = true;
@@ -758,7 +758,7 @@ void jailbreak()
                 case mach_swap_2_exploit: {
                     machswap_offsets_t *machswap_offsets = NULL;
                     if ((machswap_offsets = get_machswap_offsets()) != NULL &&
-                        machswap2_exploit(machswap_offsets, &tfp0, &kernel_base) == ERR_SUCCESS &&
+                        machswap2_exploit(machswap_offsets) == ERR_SUCCESS &&
                         MACH_PORT_VALID(tfp0) &&
                         ISADDR(kernel_base)) {
                         exploit_success = true;
@@ -905,11 +905,11 @@ void jailbreak()
     UPSTAGE();
     
     {
-        // Escape Sandbox.
+        // Initialize jailbreak.
         static uint64_t ShenanigansPatch = 0xca13feba37be;
         
-        LOG("Escaping Sandbox...");
-        SETMESSAGE(NSLocalizedString(@"Failed to escape sandbox.", nil));
+        LOG("Initializing jailbreak...");
+        SETMESSAGE(NSLocalizedString(@"Failed to initialize jailbreak.", nil));
         myProcAddr = get_proc_struct_for_pid(myPid);
         LOG("myProcAddr = " ADDR, myProcAddr);
         _assert(ISADDR(myProcAddr), message, true);
@@ -925,27 +925,21 @@ void jailbreak()
         }
         WriteKernel64(GETOFFSET(shenanigans), ShenanigansPatch);
         myCredAddr = kernelCredAddr;
+        LOG("Escaping sandbox...");
         myOriginalCredAddr = give_creds_to_process_at_addr(myProcAddr, myCredAddr);
         LOG("myOriginalCredAddr = " ADDR, myOriginalCredAddr);
         _assert(ISADDR(myOriginalCredAddr), message, true);
         _assert(setuid(0) == ERR_SUCCESS, message, true);
         _assert(getuid() == 0, message, true);
         myHost = mach_host_self();
+        LOG("Setting HSP4 as TFP0...");
+        remap_tfp0_set_hsp4(&tfp0);
+        LOG("Initializing kexecute...");
+        _assert(init_kexecute(), message, true);
+        LOG("Platformizing...");
         set_platform_binary(myProcAddr, true);
         set_cs_platform_binary(myProcAddr, true);
-        LOG("Successfully escaped Sandbox.");
-    }
-    
-    UPSTAGE();
-    
-    {
-        // Set HSP4.
-        
-        LOG("Setting HSP4 as TFP0...");
-        SETMESSAGE(NSLocalizedString(@"Failed to set HSP4 as TFP0.", nil));
-        remap_tfp0_set_hsp4(&tfp0);
-        LOG("Successfully set HSP4 as TFP0.");
-        INSERTSTATUS(NSLocalizedString(@"Set HSP4 as TFP0.\n", nil));
+        LOG("Successfully initialized jailbreak.");
     }
     
     UPSTAGE();
@@ -978,17 +972,6 @@ void jailbreak()
         const char *testFile = [NSString stringWithFormat:@"/var/mobile/test-%lu.txt", time(NULL)].UTF8String;
         writeTestFile(testFile);
         LOG("Successfully wrote a test file to UserFS.");
-    }
-    
-    UPSTAGE();
-    
-    {
-        // Initialize kexecute.
-        
-        LOG("Initializing kexecute...");
-        SETMESSAGE(NSLocalizedString(@"Failed to initialize kexecute.", nil));
-        _assert(init_kexecute(), message, true);
-        LOG("Successfully initialized kexecute.");
     }
     
     UPSTAGE();
@@ -2291,6 +2274,7 @@ out:
     myHost = HOST_NULL;
     _assert(mach_port_deallocate(mach_task_self(), myOriginalHost) == KERN_SUCCESS, message, true);
     myOriginalHost = HOST_NULL;
+    INSERTSTATUS(([NSString stringWithFormat:@"\nRead %zu bytes from kernel memory\nWrote %zu bytes to kernel memory\n", kreads, kwrites]));
     INSERTSTATUS(([NSString stringWithFormat:@"\nJailbroke in %ld seconds\n", time(NULL) - start_time]));
     STATUS(NSLocalizedString(@"Jailbroken", nil), false, false);
     showAlert(@"Jailbreak Completed", [NSString stringWithFormat:@"%@\n\n%@\n%@", NSLocalizedString(@"Jailbreak Completed with Status:", nil), status, NSLocalizedString((prefs.exploit == mach_swap_exploit || prefs.exploit == mach_swap_2_exploit) && !usedPersistedKernelTaskPort ? @"The device will now respring." : @"The app will now exit.", nil)], true, false);
