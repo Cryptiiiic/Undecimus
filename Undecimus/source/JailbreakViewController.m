@@ -586,7 +586,7 @@ bool load_prefs(prefs_t *prefs, NSDictionary *defaults) {
     prefs->reload_system_daemons = [defaults[K_RELOAD_SYSTEM_DAEMONS] boolValue];
     prefs->reset_cydia_cache = [defaults[K_RESET_CYDIA_CACHE] boolValue];
     prefs->ssh_only = [defaults[K_SSH_ONLY] boolValue];
-    prefs->enable_get_task_allow = [defaults[K_ENABLE_GET_TEASK_ALLOW] boolValue];
+    prefs->enable_get_task_allow = [defaults[K_ENABLE_GET_TASK_ALLOW] boolValue];
     prefs->set_cs_debugged = [defaults[K_SET_CS_DEBUGGED] boolValue];
     prefs->exploit = [defaults[K_EXPLOIT] intValue];
     return true;
@@ -1146,13 +1146,12 @@ void jailbreak()
             uint64_t devVnode = vnodeForPath(thedisk);
             LOG("devVnode = " ADDR, devVnode);
             _assert(ISADDR(devVnode), message, true);
+            vnode_lock(devVnode);
             uint64_t v_specinfo = ReadKernel64(devVnode + koffset(KSTRUCT_OFFSET_VNODE_VU_SPECINFO));
             LOG("v_specinfo = " ADDR, v_specinfo);
             _assert(ISADDR(v_specinfo), message, true);
             WriteKernel32(v_specinfo + koffset(KSTRUCT_OFFSET_SPECINFO_SI_FLAGS), 0);
-            uint32_t si_flags = ReadKernel32(v_specinfo + koffset(KSTRUCT_OFFSET_SPECINFO_SI_FLAGS));
-            LOG("si_flags = 0x%x", si_flags);
-            _assert(si_flags == 0, message, true);
+            vnode_unlock(devVnode);
             _assert(_vnode_put(devVnode) == ERR_SUCCESS, message, true);
             LOG("Successfully cleared dev vnode's si_flags.");
             
@@ -1216,6 +1215,7 @@ void jailbreak()
                 system_snapshot_vnode = vnodeForSnapshot(rootfd, systemSnapshot);
                 LOG("system_snapshot_vnode = " ADDR, system_snapshot_vnode);
                 _assert(ISADDR(system_snapshot_vnode), message, true);
+                vnode_lock(system_snapshot_vnode);
                 system_snapshot_vnode_v_data = ReadKernel64(system_snapshot_vnode + koffset(KSTRUCT_OFFSET_VNODE_V_DATA));
                 LOG("system_snapshot_vnode_v_data = " ADDR, system_snapshot_vnode_v_data);
                 _assert(ISADDR(system_snapshot_vnode_v_data), message, true);
@@ -1226,6 +1226,7 @@ void jailbreak()
             _assert(fs_snapshot_rename(rootfd, systemSnapshot, original_snapshot, 0) == ERR_SUCCESS, message, true);
             if (kCFCoreFoundationVersionNumber >= 1535.12) {
                 WriteKernel32(system_snapshot_vnode_v_data + 49, system_snapshot_vnode_v_data_flag);
+                vnode_unlock(system_snapshot_vnode);
                 _assert(_vnode_put(system_snapshot_vnode) == ERR_SUCCESS, message, true);
             }
             LOG("Successfully renamed system snapshot.");
@@ -1255,9 +1256,11 @@ void jailbreak()
         uint64_t rootfs_vnode = vnodeForPath("/");
         LOG("rootfs_vnode = " ADDR, rootfs_vnode);
         _assert(ISADDR(rootfs_vnode), message, true);
+        vnode_lock(rootfs_vnode);
         uint64_t v_mount = ReadKernel64(rootfs_vnode + koffset(KSTRUCT_OFFSET_VNODE_V_MOUNT));
         LOG("v_mount = " ADDR, v_mount);
         _assert(ISADDR(v_mount), message, true);
+        mount_lock(v_mount);
         uint32_t v_flag = ReadKernel32(v_mount + koffset(KSTRUCT_OFFSET_MOUNT_MNT_FLAG));
         if ((v_flag & MNT_RDONLY) || (v_flag & MNT_NOSUID)) {
             v_flag &= ~(MNT_RDONLY | MNT_NOSUID);
@@ -1265,6 +1268,8 @@ void jailbreak()
             _assert(runCommand("/sbin/mount", "-u", thedisk, NULL) == ERR_SUCCESS, message, true);
             WriteKernel32(v_mount + koffset(KSTRUCT_OFFSET_MOUNT_MNT_FLAG), v_flag);
         }
+        mount_unlock(v_mount);
+        vnode_unlock(rootfs_vnode);
         _assert(_vnode_put(rootfs_vnode) == ERR_SUCCESS, message, true);
         _assert(runCommand("/sbin/mount", NULL) == ERR_SUCCESS, message, true);
         NSString *file = [NSString stringWithContentsOfFile:@"/.installed_unc0ver" encoding:NSUTF8StringEncoding error:nil];
